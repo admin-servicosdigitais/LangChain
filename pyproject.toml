@@ -11,8 +11,8 @@ members = [
     "src/api",
 ]
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "pytest-cov>=5.0",
@@ -29,6 +29,12 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "TCH"]
+ignore = [
+    "B008",  # Depends()/Query() em defaults — idiomático em FastAPI
+    "TC001", # imports usados em runtime por Pydantic models
+    "TC002", # idem para third-party
+    "TC003", # idem para stdlib
+]
 
 [tool.mypy]
 python_version = "3.12"

@@ -27,13 +27,13 @@ jobs:
           version: "latest"
 
       - name: Install dependencies
-        run: uv sync --package ${{ matrix.package }}
+        run: uv sync
 
       - name: Run tests
         run: uv run --package ${{ matrix.package }} pytest ${{ matrix.test_path }} -v --cov --tb=short
 
       - name: Lint
-        run: uv run python -m ruff check src/ tests/
+        run: uv run ruff check src/ tests/
 
   integration:
     runs-on: ubuntu-latest
@@ -47,7 +47,7 @@ jobs:
           version: "latest"
 
       - name: Install dependencies
-        run: uv sync --package m01-collector
+        run: uv sync
 
       - name: Run integration tests
         run: uv run --package m01-collector pytest tests/integration/ -v --tb=short
