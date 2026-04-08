@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 from datetime import UTC, datetime
@@ -60,7 +61,7 @@ class MovementDetector:
                     delta_pct=delta_pct,
                     collected_at=datetime.now(UTC),
                 )
-                self._publish(event, snap)
+                await self._publish(event, snap)
                 published += 1
 
             self._previous_cache[cache_key] = snap.pinnacle_odds
@@ -80,7 +81,7 @@ class MovementDetector:
             return 0.0
         return ((curr_avg - prev_avg) / prev_avg) * 100
 
-    def _publish(
+    async def _publish(
         self,
         event: OddsMovementEvent,
         snapshot: OddsSnapshot,
@@ -90,7 +91,8 @@ class MovementDetector:
             f"{snapshot.event_id}#{snapshot.collected_at.isoformat()}#{snapshot.source.value}".encode()
         ).hexdigest()[:128]
 
-        self._sqs.send_message(
+        await asyncio.to_thread(
+            self._sqs.send_message,
             QueueUrl=self._queue_url,
             MessageBody=body,
             MessageGroupId=event.event_id,

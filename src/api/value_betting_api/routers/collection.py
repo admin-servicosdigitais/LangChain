@@ -496,12 +496,11 @@ async def deactivate_degraded_mode(
     table.update_item(
         Key={"pk": "collection_state", "sk": "degradation"},
         UpdateExpression=(
-            "SET active = :false, reason = :null, "
-            "activated_by = :null, auto_activated = :false"
+            "SET active = :false, auto_activated = :false "
+            "REMOVE reason, activated_by"
         ),
         ExpressionAttributeValues={
             ":false": False,
-            ":null": None,
         },
     )
 

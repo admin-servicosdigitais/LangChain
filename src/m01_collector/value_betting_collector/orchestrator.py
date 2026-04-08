@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import contextlib
 import logging
+from collections import defaultdict
 from datetime import UTC, datetime
 
 from value_betting_shared.models.enums import (
     MatchStatusEnum,
 )
+from value_betting_shared.models.health import QualityAlert
 from value_betting_shared.models.odds import (
     ExchangeBackAvailable,
     OddsSnapshot,
@@ -71,6 +74,8 @@ class CollectionOrchestrator:
             )
             snapshots.append(snapshot)
 
+        quality_alerts = self._check_quality(fetch_result.odds)
+
         written = await self._writer.write_batch(snapshots)
         movements = await self._detector.detect_and_publish(snapshots)
 
@@ -79,6 +84,7 @@ class CollectionOrchestrator:
             movements_published=movements,
             errors=fetch_result.errors,
             requests_used=fetch_result.requests_used,
+            quality_alerts=quality_alerts,
         )
 
     def _extract_pinnacle(
@@ -135,10 +141,8 @@ class CollectionOrchestrator:
 
         match_status = None
         if context and context.status:
-            try:
+            with contextlib.suppress(ValueError):
                 match_status = MatchStatusEnum(context.status)
-            except ValueError:
-                pass
 
         return OddsSnapshot(
             event_id=raw.event_id,
@@ -168,6 +172,31 @@ class CollectionOrchestrator:
             inv_sum += 1 / odds.draw
         return round(inv_sum - 1, 4)
 
+    def _check_quality(
+        self,
+        odds: list[RawOddsData],
+    ) -> list[QualityAlert]:
+        alerts: list[QualityAlert] = []
+        league_events: dict[str, set[str]] = defaultdict(set)
+        league_pinnacle: dict[str, set[str]] = defaultdict(set)
+
+        for raw in odds:
+            league_events[raw.league_id].add(raw.event_id)
+            if raw.is_pinnacle:
+                league_pinnacle[raw.league_id].add(raw.event_id)
+
+        for league_id, events in league_events.items():
+            pinnacle_count = len(league_pinnacle.get(league_id, set()))
+            alert = self._quality.check_pinnacle_coverage(
+                league_id=league_id,
+                total_events=len(events),
+                pinnacle_events=pinnacle_count,
+            )
+            if alert:
+                alerts.append(alert)
+
+        return alerts
+
 
 class CollectionResult:
     def __init__(
@@ -176,8 +205,10 @@ class CollectionResult:
         movements_published: int = 0,
         errors: list[str] | None = None,
         requests_used: int = 0,
+        quality_alerts: list[QualityAlert] | None = None,
     ) -> None:
         self.snapshots_written = snapshots_written
         self.movements_published = movements_published
         self.errors = errors or []
         self.requests_used = requests_used
+        self.quality_alerts = quality_alerts or []

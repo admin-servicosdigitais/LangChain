@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -22,7 +23,11 @@ class QuotaTracker:
         self._warning_pct = warning_pct
         self._critical_pct = critical_pct
 
-    def increment(self, count: int) -> AlertLevelEnum | None:
+    async def increment(self, count: int) -> AlertLevelEnum | None:
+        response = await asyncio.to_thread(self._increment_sync, count)
+        return response
+
+    def _increment_sync(self, count: int) -> AlertLevelEnum | None:
         month_key = datetime.now(UTC).strftime("%Y-%m")
         response = self._table.update_item(
             Key={"pk": "quota", "sk": month_key},
@@ -51,7 +56,10 @@ class QuotaTracker:
             return AlertLevelEnum.WARNING
         return None
 
-    def get_current_usage(self) -> tuple[int, str]:
+    async def get_current_usage(self) -> tuple[int, str]:
+        return await asyncio.to_thread(self._get_current_usage_sync)
+
+    def _get_current_usage_sync(self) -> tuple[int, str]:
         month_key = datetime.now(UTC).strftime("%Y-%m")
         response = self._table.get_item(Key={"pk": "quota", "sk": month_key})
         item = response.get("Item", {})
