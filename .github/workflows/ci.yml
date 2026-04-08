@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop, "feature/**"]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - package: value-betting-shared
+            test_path: tests/unit/shared/
+          - package: m01-collector
+            test_path: tests/unit/m01_collector/
+          - package: value-betting-api
+            test_path: tests/unit/api/
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: uv sync --package ${{ matrix.package }}
+
+      - name: Run tests
+        run: uv run --package ${{ matrix.package }} pytest ${{ matrix.test_path }} -v --cov --tb=short
+
+      - name: Lint
+        run: uv run python -m ruff check src/ tests/
+
+  integration:
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: uv sync --package m01-collector
+
+      - name: Run integration tests
+        run: uv run --package m01-collector pytest tests/integration/ -v --tb=short

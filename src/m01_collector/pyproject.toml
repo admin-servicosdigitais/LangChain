@@ -1,0 +1,23 @@
+[project]
+name = "m01-collector"
+version = "0.1.0"
+description = "M01 — Coleta de Odds (Lambda)"
+requires-python = ">=3.12"
+dependencies = [
+    "value-betting-shared",
+    "boto3>=1.34",
+    "httpx>=0.27",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "sentry-sdk>=2.0",
+]
+
+[tool.uv.sources]
+value-betting-shared = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["value_betting_collector"]

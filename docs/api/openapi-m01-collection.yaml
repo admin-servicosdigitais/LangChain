@@ -1,0 +1,1626 @@
+openapi: "3.1.0"
+info:
+  title: Value Betting API — M01 Odds Collection
+  version: 1.0.0
+  description: |
+    Módulo de Coleta de Odds (M01). Endpoints administrativos para gestão
+    de ligas, mercados, polling e monitoramento do pipeline de coleta;
+    e endpoint Elite para consulta de snapshots históricos de odds.
+
+    ## Arquitetura
+    - Admin API: `admin.valuebetting.com` — acesso restrito por IP (ADR-004)
+    - Elite API: `api.valuebetting.com` — acesso via API Key com rate limiting
+
+    ## Referências
+    - Requisitos: `docs/requirements/01_odds_collection.md`
+    - ADR-004 (API Stack), ADR-007 (Auth), ADR-010 (Estrutura)
+  contact:
+    name: Value Betting Team
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://admin.valuebetting.com
+    description: Admin API (IP allowlist + JWT)
+  - url: https://api.valuebetting.com
+    description: User/Elite API
+
+tags:
+  - name: Collection Leagues
+    description: Gestão de ligas habilitadas para coleta de odds
+  - name: Collection Market Types
+    description: Gestão de tipos de mercado (1X2, Over/Under, Asian Handicap, BTTS)
+  - name: Collection Polling
+    description: Configuração de frequência de polling e overrides por par liga/bookmaker
+  - name: Collection Health
+    description: Monitoramento de saúde do job de coleta e alertas de qualidade
+  - name: Collection Quota
+    description: Consumo e projeção de quota de API
+  - name: Collection Degradation
+    description: Gestão de modo degradado do pipeline de coleta
+  - name: Elite Snapshots
+    description: Consulta de snapshots históricos de odds (acesso Elite via API Key)
+
+# ---------------------------------------------------------------------------
+# PATHS
+# ---------------------------------------------------------------------------
+paths:
+  # ---- Leagues ----
+  /api/v1/admin/collection/leagues:
+    get:
+      operationId: listLeagues
+      summary: Listar ligas habilitadas para coleta
+      tags: [Collection Leagues]
+      security:
+        - AdminBearerAuth: []
+      parameters:
+        - name: sport
+          in: query
+          schema:
+            $ref: "#/components/schemas/SportEnum"
+        - name: active
+          in: query
+          schema:
+            type: boolean
+        - name: tierRequired
+          in: query
+          schema:
+            $ref: "#/components/schemas/TierEnum"
+      responses:
+        "200":
+          description: Lista de ligas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeagueListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+    post:
+      operationId: createLeague
+      summary: Habilitar nova liga para coleta
+      tags: [Collection Leagues]
+      security:
+        - AdminBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeagueCreateRequest"
+      responses:
+        "201":
+          description: Liga habilitada com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeagueResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/admin/collection/leagues/{leagueId}:
+    patch:
+      operationId: updateLeague
+      summary: Atualizar configuração de liga
+      tags: [Collection Leagues]
+      security:
+        - AdminBearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/LeagueIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeaguePatchRequest"
+      responses:
+        "200":
+          description: Liga atualizada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeagueResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      operationId: disableLeague
+      summary: Desabilitar liga (soft-delete — active=false)
+      description: |
+        Desabilita a liga para coleta. Alertas pendentes dessa liga são
+        cancelados. A liga permanece no banco para auditoria.
+      tags: [Collection Leagues]
+      security:
+        - AdminBearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/LeagueIdPath"
+      responses:
+        "204":
+          description: Liga desabilitada
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---- Market Types ----
+  /api/v1/admin/collection/market-types:
+    get:
+      operationId: listMarketTypes
+      summary: Listar tipos de mercado configurados
+      tags: [Collection Market Types]
+      security:
+        - AdminBearerAuth: []
+      responses:
+        "200":
+          description: Lista de tipos de mercado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketTypeListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/admin/collection/market-types/{marketTypeId}:
+    patch:
+      operationId: updateMarketType
+      summary: Habilitar/desabilitar tipo de mercado
+      tags: [Collection Market Types]
+      security:
+        - AdminBearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/MarketTypeIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarketTypePatchRequest"
+      responses:
+        "200":
+          description: Tipo de mercado atualizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketTypeResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---- Polling Config ----
+  /api/v1/admin/collection/polling/config:
+    get:
+      operationId: getPollingConfig
+      summary: Obter configuração global de polling
+      tags: [Collection Polling]
+      security:
+        - AdminBearerAuth: []
+      responses:
+        "200":
+          description: Configuração atual de polling
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PollingConfigResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+    patch:
+      operationId: updatePollingConfig
+      summary: Atualizar intervalos globais de polling
+      tags: [Collection Polling]
+      security:
+        - AdminBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PollingConfigPatchRequest"
+      responses:
+        "200":
+          description: Configuração atualizada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PollingConfigResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  # ---- Polling Overrides ----
+  /api/v1/admin/collection/polling/overrides:
+    get:
+      operationId: listPollingOverrides
+      summary: Listar overrides de polling por par liga/bookmaker
+      description: |
+        Retorna todos os overrides de frequência de polling ativos.
+        Cada override define um intervalo customizado para um par
+        (liga, bookmaker) conforme RF-COL-A.
+      tags: [Collection Polling]
+      security:
+        - AdminBearerAuth: []
+      responses:
+        "200":
+          description: Lista de overrides
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PollingOverrideListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+    post:
+      operationId: createPollingOverride
+      summary: Criar override de polling para par liga/bookmaker
+      tags: [Collection Polling]
+      security:
+        - AdminBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PollingOverrideCreateRequest"
+      responses:
+        "201":
+          description: Override criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PollingOverrideResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/admin/collection/polling/overrides/{leagueId}/{bookmakerId}:
+    delete:
+      operationId: deletePollingOverride
+      summary: Remover override de polling
+      tags: [Collection Polling]
+      security:
+        - AdminBearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/LeagueIdPath"
+        - $ref: "#/components/parameters/BookmakerIdPath"
+      responses:
+        "204":
+          description: Override removido
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---- Health & Quality ----
+  /api/v1/admin/collection/health:
+    get:
+      operationId: getCollectionHealth
+      summary: Status geral do job de coleta
+      description: |
+        Retorna saúde do pipeline de coleta incluindo status de cada
+        componente externo (The Odds API, Betfair, API-Football, DynamoDB, SQS).
+      tags: [Collection Health]
+      security:
+        - AdminBearerAuth: []
+      responses:
+        "200":
+          description: Status de saúde do pipeline
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionHealthResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/admin/collection/quality-alerts:
+    get:
+      operationId: listQualityAlerts
+      summary: Listar alertas de qualidade de dados
+      description: |
+        Retorna alertas de anomalia detectados pelo pipeline (RF-COL-010):
+        cobertura Pinnacle baixa, alta volatilidade, bookmaker não confiável.
+      tags: [Collection Health]
+      security:
+        - AdminBearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PageSizeParam"
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum: [info, warning, critical]
+        - name: alertType
+          in: query
+          schema:
+            type: string
+            enum:
+              - pinnacle_coverage_low
+              - high_volatility
+              - bookmaker_unreliable
+              - odds_anomaly
+        - $ref: "#/components/parameters/FromParam"
+        - $ref: "#/components/parameters/ToParam"
+      responses:
+        "200":
+          description: Lista paginada de alertas de qualidade
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QualityAlertListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/admin/collection/bookmakers/reliability:
+    get:
+      operationId: listBookmakerReliability
+      summary: Status de confiabilidade dos bookmakers
+      description: |
+        Retorna métricas de confiabilidade por bookmaker. Bookmakers com
+        cobertura < 10% por 3 coletas consecutivas são marcados como
+        unreliable (RF-COL-010).
+      tags: [Collection Health]
+      security:
+        - AdminBearerAuth: []
+      responses:
+        "200":
+          description: Lista de bookmakers com métricas de confiabilidade
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookmakerReliabilityListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  # ---- Quota ----
+  /api/v1/admin/collection/quota:
+    get:
+      operationId: getQuotaUsage
+      summary: Consumo atual de quota da API
+      description: |
+        Retorna contador de requisições do mês atual para The Odds API.
+        Alertas internos em 80% (warning) e 95% (critical) conforme RF-COL-009.
+      tags: [Collection Quota]
+      security:
+        - AdminBearerAuth: []
+      responses:
+        "200":
+          description: Consumo de quota
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaUsageResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/admin/collection/quota/projection:
+    get:
+      operationId: getQuotaProjection
+      summary: Projeção de consumo de quota
+      description: |
+        Projeta consumo de quota até o final do mês com base na taxa
+        atual de requisições. Inclui recomendação de ação se projeção
+        exceder limite.
+      tags: [Collection Quota]
+      security:
+        - AdminBearerAuth: []
+      responses:
+        "200":
+          description: Projeção de quota
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaProjectionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  # ---- Degradation ----
+  /api/v1/admin/collection/degradation:
+    get:
+      operationId: getDegradationStatus
+      summary: Status de modo degradado
+      tags: [Collection Degradation]
+      security:
+        - AdminBearerAuth: []
+      responses:
+        "200":
+          description: Status de degradação
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DegradationStatusResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/admin/collection/degradation/activate:
+    post:
+      operationId: activateDegradedMode
+      summary: Ativar modo degradado manualmente
+      description: |
+        Ativa modo degradado do pipeline. Novos alertas de EV são
+        suspensos (sem dados = sem alertas falsos). Requer motivo
+        para audit trail (RF-COL-008).
+      tags: [Collection Degradation]
+      security:
+        - AdminBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DegradationActivateRequest"
+      responses:
+        "200":
+          description: Modo degradado ativado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DegradationStatusResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/admin/collection/degradation/deactivate:
+    post:
+      operationId: deactivateDegradedMode
+      summary: Desativar modo degradado
+      description: |
+        Retoma operação normal do pipeline. Coleta e alertas de EV
+        são reativados.
+      tags: [Collection Degradation]
+      security:
+        - AdminBearerAuth: []
+      responses:
+        "200":
+          description: Modo normal restaurado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DegradationStatusResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  # ---- Elite Snapshots ----
+  /api/v1/elite/snapshots:
+    get:
+      operationId: listSnapshots
+      summary: Consultar snapshots históricos de odds
+      description: |
+        Endpoint para usuários Elite consultarem snapshots históricos.
+        Paginação cursor-based otimizada para DynamoDB. Ao menos um filtro
+        entre `eventId` ou `leagueId` é obrigatório para evitar scan
+        completo. Histórico máximo: 12 meses (RF-COL-005).
+      tags: [Elite Snapshots]
+      security:
+        - EliteApiKey: []
+      parameters:
+        - name: eventId
+          in: query
+          description: Filtrar por ID do evento (obrigatório se leagueId ausente)
+          schema:
+            type: string
+        - name: leagueId
+          in: query
+          description: Filtrar por liga (obrigatório se eventId ausente)
+          schema:
+            type: string
+        - name: marketType
+          in: query
+          schema:
+            $ref: "#/components/schemas/MarketTypeEnum"
+        - name: bookmakerId
+          in: query
+          schema:
+            type: string
+        - $ref: "#/components/parameters/FromParam"
+        - $ref: "#/components/parameters/ToParam"
+        - $ref: "#/components/parameters/LimitParam"
+        - $ref: "#/components/parameters/CursorParam"
+      responses:
+        "200":
+          description: Lista paginada de snapshots
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SnapshotListResponse"
+        "400":
+          description: Filtro obrigatório ausente (eventId ou leagueId)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                code: VALIDATION_ERROR
+                message: "Ao menos um filtro entre eventId ou leagueId é obrigatório"
+                details: null
+                traceId: "abc-123-def-456"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+# ---------------------------------------------------------------------------
+# COMPONENTS
+# ---------------------------------------------------------------------------
+components:
+  # ---- Security Schemes ----
+  securitySchemes:
+    AdminBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT RS256 para admin (ADR-007). Claims: sub (admin_id),
+        role (ops|super_admin), exp (TTL 4h). Requer MFA TOTP prévio.
+        Validado pelo API Gateway JWT Authorizer + FastAPI Depends.
+
+    EliteApiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: |
+        API Key Elite no formato vb_elite_<32chars> (ADR-007).
+        Rate limit: 1000 req/hora via API Gateway Usage Plan.
+        Hash SHA-256 armazenado. Exibida em plain-text apenas na criação.
+
+  # ---- Reusable Parameters ----
+  parameters:
+    LeagueIdPath:
+      name: leagueId
+      in: path
+      required: true
+      description: Identificador da liga
+      schema:
+        type: string
+        pattern: "^[a-z0-9_]+$"
+        example: premier_league
+
+    MarketTypeIdPath:
+      name: marketTypeId
+      in: path
+      required: true
+      description: Identificador do tipo de mercado
+      schema:
+        type: string
+        pattern: "^[a-z0-9_]+$"
+        example: over_under_2_5
+
+    BookmakerIdPath:
+      name: bookmakerId
+      in: path
+      required: true
+      description: Identificador do bookmaker
+      schema:
+        type: string
+        pattern: "^[a-z0-9_]+$"
+        example: bet365
+
+    PageParam:
+      name: page
+      in: query
+      description: Número da página (paginação offset)
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+
+    PageSizeParam:
+      name: pageSize
+      in: query
+      description: Itens por página
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+    CursorParam:
+      name: cursor
+      in: query
+      description: Cursor opaco para próxima página (base64 de DynamoDB LastEvaluatedKey)
+      schema:
+        type: string
+
+    LimitParam:
+      name: limit
+      in: query
+      description: Número máximo de itens retornados
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 1000
+        default: 100
+
+    FromParam:
+      name: from
+      in: query
+      description: Filtro de data início (UTC ISO 8601)
+      schema:
+        type: string
+        format: date-time
+
+    ToParam:
+      name: to
+      in: query
+      description: Filtro de data fim (UTC ISO 8601)
+      schema:
+        type: string
+        format: date-time
+
+  # ---- Reusable Responses ----
+  responses:
+    BadRequest:
+      description: Requisição inválida — falha de validação
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            code: VALIDATION_ERROR
+            message: "Campo intervalSeconds deve estar entre 15 e 300"
+            details:
+              - field: intervalSeconds
+                constraint: minimum
+                value: 10
+                expected: 15
+            traceId: "abc-123-def-456"
+
+    Unauthorized:
+      description: Autenticação necessária ou token/API Key inválido
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            code: UNAUTHORIZED
+            message: "Token inválido ou expirado"
+            details: null
+            traceId: "abc-123-def-456"
+
+    Forbidden:
+      description: Sem permissão para este recurso
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            code: FORBIDDEN
+            message: "Permissão insuficiente para este recurso"
+            details: null
+            traceId: "abc-123-def-456"
+
+    NotFound:
+      description: Recurso não encontrado
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            code: NOT_FOUND
+            message: "Recurso não encontrado"
+            details: null
+            traceId: "abc-123-def-456"
+
+    Conflict:
+      description: Conflito com estado atual do recurso
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            code: CONFLICT
+            message: "Liga premier_league já está habilitada"
+            details: null
+            traceId: "abc-123-def-456"
+
+    TooManyRequests:
+      description: Rate limit excedido
+      headers:
+        Retry-After:
+          description: Segundos até o próximo request permitido
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            code: RATE_LIMITED
+            message: "Rate limit de 1000 req/hora excedido"
+            details: null
+            traceId: "abc-123-def-456"
+
+    InternalServerError:
+      description: Erro interno do servidor
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            code: INTERNAL_ERROR
+            message: "Erro interno do servidor"
+            details: null
+            traceId: "abc-123-def-456"
+
+  # ---- Schemas ----
+  schemas:
+    # -- Enums --
+    SportEnum:
+      type: string
+      enum: [football, tennis, basketball, baseball]
+
+    TierEnum:
+      type: string
+      enum: [free, pro, elite]
+
+    MarketTypeEnum:
+      type: string
+      enum: [1x2, over_under_2_5, over_under_3_5, asian_handicap, btts]
+
+    # -- Error --
+    ErrorResponse:
+      type: object
+      required: [code, message, traceId]
+      properties:
+        code:
+          type: string
+          description: Código de erro máquina-legível
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          description: Mensagem humana-legível
+          example: "Campo obrigatório ausente"
+        details:
+          description: Detalhes adicionais do erro (campos inválidos, etc)
+          oneOf:
+            - type: array
+              items:
+                type: object
+            - type: object
+            - type: "null"
+        traceId:
+          type: string
+          description: ID de correlação para debug (X-Ray trace, ADR-008)
+          example: "abc-123-def-456"
+
+    # -- Pagination --
+    OffsetPagination:
+      type: object
+      required: [page, pageSize, totalItems, totalPages]
+      properties:
+        page:
+          type: integer
+          minimum: 1
+          example: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+          example: 20
+        totalItems:
+          type: integer
+          minimum: 0
+          example: 87
+        totalPages:
+          type: integer
+          minimum: 0
+          example: 5
+
+    CursorPagination:
+      type: object
+      required: [limit, hasMore]
+      properties:
+        limit:
+          type: integer
+          example: 100
+        cursor:
+          type: ["string", "null"]
+          description: Cursor opaco para próxima página. null se não há mais dados.
+          example: "eyJldmVudElkIjoibWF0Y2hfMTIzIn0="
+        hasMore:
+          type: boolean
+          example: true
+
+    # -- Entities --
+    League:
+      type: object
+      required: [leagueId, name, sport, country, active, tierRequired]
+      properties:
+        leagueId:
+          type: string
+          pattern: "^[a-z0-9_]+$"
+          example: premier_league
+        name:
+          type: string
+          example: Premier League
+        sport:
+          $ref: "#/components/schemas/SportEnum"
+        country:
+          type: string
+          minLength: 2
+          maxLength: 2
+          description: ISO 3166-1 alpha-2
+          example: GB
+        active:
+          type: boolean
+        tierRequired:
+          $ref: "#/components/schemas/TierEnum"
+        minMarketsPerRound:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 5
+          description: Mínimo de mercados por rodada para justificar custo de coleta (RN-COL-005)
+        lastCollectionAt:
+          type: ["string", "null"]
+          format: date-time
+          readOnly: true
+          description: Timestamp da última coleta bem-sucedida
+        marketsCollected24h:
+          type: integer
+          readOnly: true
+          description: Total de mercados coletados nas últimas 24h
+        estimatedQuotaCost:
+          type: ["number", "null"]
+          readOnly: true
+          description: Custo estimado mensal em requisições à API
+
+    MarketType:
+      type: object
+      required: [marketTypeId, name, enabled]
+      properties:
+        marketTypeId:
+          type: string
+          pattern: "^[a-z0-9_]+$"
+          example: 1x2
+        name:
+          type: string
+          example: "Match Winner (1X2)"
+        enabled:
+          type: boolean
+        minBookmakerCoveragePct:
+          type: integer
+          minimum: 0
+          maximum: 100
+          default: 70
+          description: Percentual mínimo de bookmakers que devem oferecer este mercado (RF-COL-004)
+
+    PollingConfig:
+      type: object
+      properties:
+        pollingInterval24hSec:
+          type: integer
+          minimum: 15
+          maximum: 300
+          default: 30
+          description: Intervalo de polling para eventos < 24h do início (RF-COL-001)
+        pollingInterval72hSec:
+          type: integer
+          minimum: 60
+          maximum: 1800
+          default: 300
+          description: Intervalo para eventos entre 24h e 72h do início
+        pollingIntervalBeyond72hSec:
+          type: integer
+          minimum: 300
+          maximum: 3600
+          default: 1800
+          description: Intervalo para eventos > 72h do início
+
+    PollingOverride:
+      type: object
+      required: [leagueId, bookmakerId, intervalSeconds]
+      properties:
+        leagueId:
+          type: string
+          pattern: "^[a-z0-9_]+$"
+          example: premier_league
+        bookmakerId:
+          type: string
+          pattern: "^[a-z0-9_]+$"
+          example: bet365
+        intervalSeconds:
+          type: integer
+          minimum: 15
+          maximum: 300
+          description: Intervalo customizado em segundos (RF-COL-A)
+          example: 20
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        createdBy:
+          type: string
+          readOnly: true
+          description: admin_id que criou o override
+
+    BookmakerReliability:
+      type: object
+      required: [bookmakerId, name, unreliable, coveragePct7d]
+      properties:
+        bookmakerId:
+          type: string
+          example: bet365
+        name:
+          type: string
+          example: Bet365
+        unreliable:
+          type: boolean
+          description: Marcado após cobertura < 10% por 3 coletas consecutivas (RF-COL-010)
+        unreliableSince:
+          type: ["string", "null"]
+          format: date-time
+        coveragePct7d:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+          description: Percentual de mercados cobertos nos últimos 7 dias
+          example: 92.5
+
+    QualityAlert:
+      type: object
+      required: [qualityAlertId, alertType, detectedAt, severity, metricValue, thresholdValue]
+      properties:
+        qualityAlertId:
+          type: string
+          format: uuid
+        leagueId:
+          type: ["string", "null"]
+          description: Liga afetada (null para alertas globais)
+        bookmakerId:
+          type: ["string", "null"]
+          description: Bookmaker afetado (para alertas do tipo bookmaker_unreliable)
+        alertType:
+          type: string
+          enum:
+            - pinnacle_coverage_low
+            - high_volatility
+            - bookmaker_unreliable
+            - odds_anomaly
+          description: |
+            - pinnacle_coverage_low: Pinnacle retornou odds para < 50% dos jogos esperados
+            - high_volatility: Desvio > 15% entre coletas consecutivas
+            - bookmaker_unreliable: Cobertura < 10% por 3 coletas consecutivas
+            - odds_anomaly: Anomalia genérica detectada nos dados
+        detectedAt:
+          type: string
+          format: date-time
+        severity:
+          type: string
+          enum: [info, warning, critical]
+        metricValue:
+          type: number
+          format: double
+          description: Valor observado da métrica
+          example: 35.0
+        thresholdValue:
+          type: number
+          format: double
+          description: Threshold que foi violado
+          example: 50.0
+
+    QuotaUsage:
+      type: object
+      required: [month, requestsCount, requestsLimit, percentageConsumed]
+      properties:
+        month:
+          type: string
+          pattern: '^\d{4}-\d{2}$'
+          description: Mês de referência
+          example: "2026-04"
+        requestsCount:
+          type: integer
+          description: Total de requisições realizadas no mês
+          example: 350000
+        requestsLimit:
+          type: integer
+          description: Limite de requisições do plano contratado
+          example: 500000
+        percentageConsumed:
+          type: number
+          format: double
+          minimum: 0
+          description: Percentual consumido
+          example: 70.0
+        alertLevel:
+          type: ["string", "null"]
+          enum: [normal, warning, critical, null]
+          description: |
+            Nível de alerta — warning em 80%, critical em 95% (RF-COL-009).
+            null se abaixo de 80%.
+          example: normal
+
+    QuotaProjection:
+      type: object
+      required: [currentMonth, projectedRequests, projectedPercentage]
+      properties:
+        currentMonth:
+          type: string
+          pattern: '^\d{4}-\d{2}$'
+          example: "2026-04"
+        projectedRequests:
+          type: integer
+          description: Projeção de total de requisições até fim do mês
+          example: 450000
+        projectedPercentage:
+          type: number
+          format: double
+          description: Projeção de percentual de consumo
+          example: 90.0
+        projectedExhaustionDate:
+          type: ["string", "null"]
+          format: date
+          description: Data estimada de esgotamento da quota. null se projeção não atinge 100%.
+          example: "2026-04-25"
+        recommendation:
+          type: ["string", "null"]
+          enum: [none, reduce_polling_frequency, disable_low_priority_leagues, null]
+          description: Ação recomendada baseada na projeção
+
+    CollectionHealth:
+      type: object
+      required: [status, consecutiveFailures, activeEventsCount]
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, down]
+          description: Status geral do pipeline de coleta
+        lastSuccessfulRun:
+          type: ["string", "null"]
+          format: date-time
+          description: Timestamp da última execução bem-sucedida
+        currentCycleRunning:
+          type: boolean
+          description: Se há um ciclo de coleta em execução agora
+        consecutiveFailures:
+          type: integer
+          minimum: 0
+          description: Número de falhas consecutivas (alerta após 3, RF-COL-008)
+        activeEventsCount:
+          type: integer
+          minimum: 0
+          description: Eventos ativos sendo monitorados
+        marketsPerMinute:
+          type: number
+          format: double
+          description: Taxa de mercados coletados por minuto
+        averageCycleDurationMs:
+          type: number
+          format: double
+          description: Duração média do ciclo de coleta em ms (alerta se > 25000, RF-COL-001)
+        components:
+          type: array
+          items:
+            $ref: "#/components/schemas/ComponentHealth"
+
+    ComponentHealth:
+      type: object
+      required: [name, status, lastCheckAt]
+      properties:
+        name:
+          type: string
+          enum: [the_odds_api, betfair, api_football, dynamodb, sqs]
+          description: Componente externo monitorado
+        status:
+          type: string
+          enum: [ok, degraded, down]
+        lastCheckAt:
+          type: string
+          format: date-time
+        details:
+          type: ["string", "null"]
+          description: Detalhes adicionais (mensagem de erro, etc)
+
+    DegradationStatus:
+      type: object
+      required: [active]
+      properties:
+        active:
+          type: boolean
+          description: Se o modo degradado está ativo
+        activatedAt:
+          type: ["string", "null"]
+          format: date-time
+        activatedBy:
+          type: ["string", "null"]
+          description: admin_id ou 'system' para ativação automática (RF-COL-008)
+        reason:
+          type: ["string", "null"]
+          description: Motivo da ativação
+        autoActivated:
+          type: boolean
+          description: true se ativado automaticamente por 3 falhas consecutivas
+        affectedLeagues:
+          type: array
+          items:
+            type: string
+          description: IDs das ligas afetadas
+
+    PinnacleOdds:
+      type: ["object", "null"]
+      description: Odds Pinnacle de referência. null se noSharpReference=true (RN-COL-001).
+      properties:
+        home:
+          type: number
+          format: double
+          minimum: 1.01
+          example: 1.85
+        draw:
+          type: ["number", "null"]
+          format: double
+          minimum: 1.01
+          description: null para mercados sem empate
+          example: 3.40
+        away:
+          type: number
+          format: double
+          minimum: 1.01
+          example: 4.20
+
+    ExchangeBackAvailable:
+      type: ["object", "null"]
+      description: Volume disponível para back por seleção no Betfair
+      properties:
+        home:
+          type: number
+          format: double
+          example: 25000.00
+        draw:
+          type: ["number", "null"]
+          format: double
+          example: 12000.00
+        away:
+          type: number
+          format: double
+          example: 18000.00
+
+    OddsSnapshot:
+      type: object
+      required:
+        - eventId
+        - marketType
+        - bookmakerId
+        - oddsHome
+        - oddsAway
+        - collectedAt
+        - source
+      properties:
+        eventId:
+          type: string
+          description: ID do evento na fonte primária
+          example: match_123456
+        eventCanonicalId:
+          type: ["string", "null"]
+          description: ID canônico interno — mapeamento cross-fonte (RN-COL-004)
+          example: canonical_prem_mci_ars_20260407
+        marketType:
+          $ref: "#/components/schemas/MarketTypeEnum"
+        bookmakerId:
+          type: string
+          example: bet365
+        oddsHome:
+          type: number
+          format: double
+          minimum: 1.01
+          description: Odds para o time da casa
+          example: 2.15
+        oddsDraw:
+          type: ["number", "null"]
+          format: double
+          minimum: 1.01
+          description: Odds para empate. null para mercados sem empate (BTTS, Over/Under).
+          example: 3.40
+        oddsAway:
+          type: number
+          format: double
+          minimum: 1.01
+          description: Odds para o time visitante
+          example: 3.60
+        pinnacleOdds:
+          $ref: "#/components/schemas/PinnacleOdds"
+        pinnacleMargin:
+          type: ["number", "null"]
+          format: double
+          minimum: 0
+          maximum: 0.15
+          description: Margem Pinnacle calculada. null se noSharpReference=true.
+          example: 0.028
+        noSharpReference:
+          type: boolean
+          default: false
+          description: |
+            true se Pinnacle não disponível para este mercado (RN-COL-001).
+            Mercados com noSharpReference=true são excluídos do cálculo de EV.
+        correctionOf:
+          type: ["string", "null"]
+          description: |
+            ID do snapshot corrigido (RN-COL-002). Snapshots com correctionOf
+            preenchido não entram no pipeline de alertas — apenas backtesting.
+        collectedAt:
+          type: string
+          format: date-time
+          description: Timestamp de coleta (UTC ISO 8601)
+          example: "2026-04-07T14:23:45Z"
+        source:
+          type: string
+          enum: [the_odds_api, betfair]
+          description: Fonte primária dos dados deste snapshot
+        highVolatility:
+          type: boolean
+          default: false
+          description: Desvio > 15% entre coletas consecutivas da Pinnacle (RF-COL-010)
+        betfairMatchedAmount:
+          type: ["number", "null"]
+          format: double
+          description: Volume total negociado no Betfair em USD (RF-COL-006)
+          example: 250000.00
+        betfairAvailableToBack:
+          $ref: "#/components/schemas/ExchangeBackAvailable"
+        exchangeVolumeUsd:
+          type: ["number", "null"]
+          format: double
+          description: Volume Betfair em USD — campo consolidado (RF-COL-B)
+          example: 250000.00
+        exchangeBackAvailable:
+          $ref: "#/components/schemas/ExchangeBackAvailable"
+        lowLiquidity:
+          type: boolean
+          default: false
+          description: true se matched_amount < $10.000 (RF-COL-006)
+        matchStatus:
+          type: ["string", "null"]
+          enum: [scheduled, live, finished, postponed, cancelled, null]
+          description: Status da partida via API-Football (RF-COL-007)
+        matchVenue:
+          type: ["string", "null"]
+          description: Local da partida (RF-COL-007)
+          example: Etihad Stadium
+        matchRound:
+          type: ["string", "null"]
+          description: Rodada do campeonato (RF-COL-007)
+          example: "Matchday 32"
+
+    # -- Request Bodies --
+    LeagueCreateRequest:
+      type: object
+      required: [leagueId, name, sport, country]
+      properties:
+        leagueId:
+          type: string
+          pattern: "^[a-z0-9_]+$"
+          example: premier_league
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          example: Premier League
+        sport:
+          $ref: "#/components/schemas/SportEnum"
+        country:
+          type: string
+          minLength: 2
+          maxLength: 2
+          description: ISO 3166-1 alpha-2
+          example: GB
+        tierRequired:
+          $ref: "#/components/schemas/TierEnum"
+          default: pro
+        minMarketsPerRound:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 5
+
+    LeaguePatchRequest:
+      type: object
+      minProperties: 1
+      properties:
+        active:
+          type: boolean
+        tierRequired:
+          $ref: "#/components/schemas/TierEnum"
+        minMarketsPerRound:
+          type: integer
+          minimum: 1
+          maximum: 50
+
+    MarketTypePatchRequest:
+      type: object
+      minProperties: 1
+      properties:
+        enabled:
+          type: boolean
+        minBookmakerCoveragePct:
+          type: integer
+          minimum: 0
+          maximum: 100
+
+    PollingConfigPatchRequest:
+      type: object
+      minProperties: 1
+      properties:
+        pollingInterval24hSec:
+          type: integer
+          minimum: 15
+          maximum: 300
+        pollingInterval72hSec:
+          type: integer
+          minimum: 60
+          maximum: 1800
+        pollingIntervalBeyond72hSec:
+          type: integer
+          minimum: 300
+          maximum: 3600
+
+    PollingOverrideCreateRequest:
+      type: object
+      required: [leagueId, bookmakerId, intervalSeconds]
+      properties:
+        leagueId:
+          type: string
+          pattern: "^[a-z0-9_]+$"
+        bookmakerId:
+          type: string
+          pattern: "^[a-z0-9_]+$"
+        intervalSeconds:
+          type: integer
+          minimum: 15
+          maximum: 300
+          description: Range 15-300 segundos (RF-COL-A)
+
+    DegradationActivateRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          minLength: 5
+          maxLength: 500
+          description: Motivo da ativação manual — obrigatório para audit trail
+          example: "The Odds API instável — investigando incidente"
+
+    # -- Response Wrappers --
+    LeagueResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/League"
+
+    LeagueListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/League"
+
+    MarketTypeResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/MarketType"
+
+    MarketTypeListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/MarketType"
+
+    PollingConfigResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/PollingConfig"
+
+    PollingOverrideResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/PollingOverride"
+
+    PollingOverrideListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PollingOverride"
+
+    CollectionHealthResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/CollectionHealth"
+
+    QualityAlertListResponse:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/QualityAlert"
+        pagination:
+          $ref: "#/components/schemas/OffsetPagination"
+
+    BookmakerReliabilityListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/BookmakerReliability"
+
+    QuotaUsageResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/QuotaUsage"
+
+    QuotaProjectionResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/QuotaProjection"
+
+    DegradationStatusResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/DegradationStatus"
+
+    SnapshotListResponse:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/OddsSnapshot"
+        pagination:
+          $ref: "#/components/schemas/CursorPagination"
+
+# ---------------------------------------------------------------------------
+# ASYNC EVENTS (extension — not REST endpoints)
+# ---------------------------------------------------------------------------
+x-async-events:
+  OddsMovementDetected:
+    description: |
+      Emitido quando delta de odds Pinnacle > 2% entre snapshots consecutivos (RF-COL-C).
+      Publicado em SQS FIFO: odds-movement-events.fifo
+      MessageGroupId: event_id
+      Consumidor: Agente B (Odds Movement Classifier)
+    queue: odds-movement-events.fifo
+    trigger: "Pinnacle odds delta > 2% em relação ao snapshot anterior"
+    payload:
+      type: object
+      required:
+        - eventId
+        - marketType
+        - bookmakerId
+        - previousOdds
+        - currentOdds
+        - deltaPct
+        - collectedAt
+      properties:
+        eventId:
+          type: string
+          description: ID do evento
+          example: match_123456
+        eventCanonicalId:
+          type: ["string", "null"]
+          description: ID canônico interno
+        marketType:
+          type: string
+          enum: [1x2, over_under_2_5, over_under_3_5, asian_handicap, btts]
+        bookmakerId:
+          type: string
+          example: pinnacle
+        previousOdds:
+          type: object
+          properties:
+            home: { type: number, example: 1.85 }
+            draw: { type: ["number", "null"], example: 3.40 }
+            away: { type: number, example: 4.20 }
+        currentOdds:
+          type: object
+          properties:
+            home: { type: number, example: 1.88 }
+            draw: { type: ["number", "null"], example: 3.35 }
+            away: { type: number, example: 4.10 }
+        deltaPct:
+          type: object
+          description: Delta percentual por seleção
+          properties:
+            home: { type: number, example: 0.016 }
+            draw: { type: ["number", "null"], example: -0.015 }
+            away: { type: number, example: -0.024 }
+        seriesLast5Snapshots:
+          type: array
+          maxItems: 5
+          description: Últimos 5 snapshots da Pinnacle para este mercado
+          items:
+            type: object
+            properties:
+              oddsHome: { type: number }
+              oddsDraw: { type: ["number", "null"] }
+              oddsAway: { type: number }
+              collectedAt: { type: string, format: date-time }
+        exchangeVolumeDelta:
+          type: ["number", "null"]
+          description: Variação de volume no Betfair em USD desde o último snapshot
+          example: 15000.00
+        collectedAt:
+          type: string
+          format: date-time
+          example: "2026-04-07T14:23:45Z"
