@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from typing import Any, Generic, TypeVar
+from typing import Any
 
 from pydantic import BaseModel, Field
-
-T = TypeVar("T")
 
 
 class ErrorResponse(BaseModel):
@@ -27,15 +25,15 @@ class CursorPagination(BaseModel):
     has_more: bool = False
 
 
-class DataResponse(BaseModel, Generic[T]):
+class DataResponse[T](BaseModel):
     data: T
 
 
-class PaginatedResponse(BaseModel, Generic[T]):
+class PaginatedResponse[T](BaseModel):
     data: list[T]
     pagination: OffsetPagination
 
 
-class CursorPaginatedResponse(BaseModel, Generic[T]):
+class CursorPaginatedResponse[T](BaseModel):
     data: list[T]
     pagination: CursorPagination

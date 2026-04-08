@@ -4,10 +4,10 @@ import logging
 import os
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from fastapi import Depends, Header, HTTPException, status
 from jose import JWTError, jwt
+
+logger = logging.getLogger(__name__)
 
 _ENV = os.environ.get("VB_ENV", "dev")
 _ADMIN_JWT_SECRET = os.environ.get("VB_ADMIN_JWT_SECRET", "")

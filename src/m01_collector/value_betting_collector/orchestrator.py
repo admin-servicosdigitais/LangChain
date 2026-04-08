@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import contextlib
 import logging
-from datetime import UTC, datetime
-
 from collections import defaultdict
+from datetime import UTC, datetime
 
 from value_betting_shared.models.enums import (
     MatchStatusEnum,
@@ -141,10 +141,8 @@ class CollectionOrchestrator:
 
         match_status = None
         if context and context.status:
-            try:
+            with contextlib.suppress(ValueError):
                 match_status = MatchStatusEnum(context.status)
-            except ValueError:
-                pass
 
         return OddsSnapshot(
             event_id=raw.event_id,

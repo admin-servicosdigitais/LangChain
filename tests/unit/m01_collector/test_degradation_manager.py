@@ -87,5 +87,5 @@ class TestRecordFailure:
             "Attributes": {"consecutive_failures": 5, "active": True},
         }
         mgr = DegradationManager(table=table, max_consecutive_failures=3)
-        status = await mgr.record_failure()
+        await mgr.record_failure()
         assert table.update_item.call_count == 1

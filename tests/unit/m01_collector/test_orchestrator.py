@@ -168,7 +168,7 @@ class TestProcessCollection:
             ],
             requests_used=1,
         )
-        result = await orch.process_collection(fetch)
+        await orch.process_collection(fetch)
 
         written_snapshots = writer.write_batch.call_args[0][0]
         assert len(written_snapshots) == 1
