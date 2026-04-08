@@ -78,7 +78,6 @@ class DegradationManager:
                 ":now": now,
                 ":system": "system",
                 ":reason": reason,
-                ":true": True,
             },
         )
         logger.critical("Degraded mode ACTIVATED: %s", reason)

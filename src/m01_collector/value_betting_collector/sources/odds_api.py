@@ -161,26 +161,35 @@ class TheOddsApiClient:
                 )
 
         elif market_key == "totals":
+            over_price: float | None = None
+            under_price: float | None = None
             for o in outcomes:
-                point = o.get("point")
-                if point == 2.5:
-                    results.append(
-                        RawOddsData(
-                            event_id=event_id,
-                            sport=sport,
-                            league_id=league_id,
-                            home_team=home_team,
-                            away_team=away_team,
-                            commence_time=commence_time,
-                            bookmaker_id=bookmaker_id,
-                            market_type=MarketTypeEnum.OVER_UNDER_2_5,
-                            odds_home=o.get("price", 0.0),
-                            odds_draw=None,
-                            odds_away=0.0,
-                            source=OddsSourceEnum.THE_ODDS_API,
-                            is_pinnacle=(bookmaker_id == _PINNACLE_KEY),
-                        )
+                if o.get("point") != 2.5:
+                    continue
+                name = o.get("name", "").lower()
+                if name == "over":
+                    over_price = o.get("price")
+                elif name == "under":
+                    under_price = o.get("price")
+
+            if over_price is not None and under_price is not None:
+                results.append(
+                    RawOddsData(
+                        event_id=event_id,
+                        sport=sport,
+                        league_id=league_id,
+                        home_team=home_team,
+                        away_team=away_team,
+                        commence_time=commence_time,
+                        bookmaker_id=bookmaker_id,
+                        market_type=MarketTypeEnum.OVER_UNDER_2_5,
+                        odds_home=over_price,
+                        odds_draw=None,
+                        odds_away=under_price,
+                        source=OddsSourceEnum.THE_ODDS_API,
+                        is_pinnacle=(bookmaker_id == _PINNACLE_KEY),
                     )
+                )
 
         return results
 
