@@ -2,10 +2,16 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any
+
+_SENSITIVE_PATTERN = re.compile(
+    r"(apiKey|api_key|token|secret|password|authorization)=([^\s&,\"']+)",
+    re.IGNORECASE,
+)
 
 correlation_id_var: ContextVar[str] = ContextVar("correlation_id", default="")
 
@@ -22,6 +28,10 @@ def set_correlation_id(cid: str) -> None:
     correlation_id_var.set(cid)
 
 
+def _redact_sensitive(text: str) -> str:
+    return _SENSITIVE_PATTERN.sub(r"\1=[REDACTED]", text)
+
+
 class JSONFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         log_data: dict[str, Any] = {
@@ -29,7 +39,7 @@ class JSONFormatter(logging.Formatter):
             "level": record.levelname,
             "correlation_id": get_correlation_id(),
             "module": record.module,
-            "message": record.getMessage(),
+            "message": _redact_sensitive(record.getMessage()),
         }
         if hasattr(record, "extra_data"):
             log_data.update(record.extra_data)  # type: ignore[arg-type]

@@ -181,7 +181,7 @@ async def _async_handler(
         await degradation.record_failure()
         logger.error("Collection failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
-        return {"statusCode": 500, "body": str(e)}
+        return {"statusCode": 500, "body": "internal_error"}
 
     finally:
         await odds_client.close()

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from fastapi import Depends, Header, HTTPException, status
 from jose import JWTError, jwt
@@ -27,9 +30,10 @@ async def verify_admin_jwt(
     try:
         payload = jwt.decode(token, _ADMIN_JWT_SECRET, algorithms=[_JWT_ALGORITHM])
     except JWTError as e:
+        logger.warning("JWT validation failed: %s", e)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Token inválido: {e}",
+            detail="Token inválido",
         ) from e
     role = payload.get("role")
     if role not in ("ops", "super_admin"):
