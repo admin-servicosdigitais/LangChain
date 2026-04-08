@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -15,6 +16,9 @@ class SnapshotWriter:
         self._table = table
 
     async def write_batch(self, snapshots: list[OddsSnapshot]) -> int:
+        return await asyncio.to_thread(self._write_batch_sync, snapshots)
+
+    def _write_batch_sync(self, snapshots: list[OddsSnapshot]) -> int:
         written = 0
         for i in range(0, len(snapshots), _BATCH_SIZE):
             batch = snapshots[i : i + _BATCH_SIZE]

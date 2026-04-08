@@ -34,7 +34,7 @@ def _init_sentry(dsn: str) -> None:
 
 
 def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
-    return asyncio.get_event_loop().run_until_complete(_async_handler(event, context))
+    return asyncio.run(_async_handler(event, context))
 
 
 async def _async_handler(
@@ -66,7 +66,7 @@ async def _async_handler(
         table=state_table,
         max_consecutive_failures=settings.max_consecutive_failures,
     )
-    status = degradation.get_status()
+    status = await degradation.get_status()
     if status.active:
         logger.warning("Pipeline in degraded mode, skipping collection")
         return {"statusCode": 200, "body": "degraded_mode_active"}
@@ -140,8 +140,8 @@ async def _async_handler(
             match_contexts=match_contexts,
         )
 
-        quota.increment(result.requests_used)
-        degradation.record_success()
+        await quota.increment(result.requests_used)
+        await degradation.record_success()
 
         duration_ms = (time.monotonic() - start) * 1000
         put_metric(
@@ -178,7 +178,7 @@ async def _async_handler(
         }
 
     except Exception as e:
-        degradation.record_failure()
+        await degradation.record_failure()
         logger.error("Collection failed: %s", e, exc_info=True)
         sentry_sdk.capture_exception(e)
         return {"statusCode": 500, "body": str(e)}

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -18,7 +19,10 @@ class DegradationManager:
         self._table = table
         self._max_failures = max_consecutive_failures
 
-    def record_failure(self) -> DegradationStatus:
+    async def record_failure(self) -> DegradationStatus:
+        return await asyncio.to_thread(self._record_failure_sync)
+
+    def _record_failure_sync(self) -> DegradationStatus:
         response = self._table.update_item(
             Key={"pk": "collection_state", "sk": "degradation"},
             UpdateExpression=(
@@ -36,11 +40,14 @@ class DegradationManager:
 
         if failures >= self._max_failures and not attrs.get("active", False):
             self._activate_degraded_mode(reason="auto: 3 consecutive failures")
-            return self.get_status()
+            return self._get_status_sync()
 
         return self._attrs_to_status(attrs)
 
-    def record_success(self) -> None:
+    async def record_success(self) -> None:
+        await asyncio.to_thread(self._record_success_sync)
+
+    def _record_success_sync(self) -> None:
         self._table.update_item(
             Key={"pk": "collection_state", "sk": "degradation"},
             UpdateExpression=(
@@ -55,7 +62,10 @@ class DegradationManager:
             },
         )
 
-    def get_status(self) -> DegradationStatus:
+    async def get_status(self) -> DegradationStatus:
+        return await asyncio.to_thread(self._get_status_sync)
+
+    def _get_status_sync(self) -> DegradationStatus:
         response = self._table.get_item(
             Key={"pk": "collection_state", "sk": "degradation"}
         )
